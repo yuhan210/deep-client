@@ -32,7 +32,9 @@ import java.util.Date;
 
 import static android.widget.Toast.*;
 
-
+/**
+ * Created by Tiffany Chen on 5/20/15.
+ */
 public class MainActivity extends ActionBarActivity {
 
     private static final String TAG = "MainActivity";
