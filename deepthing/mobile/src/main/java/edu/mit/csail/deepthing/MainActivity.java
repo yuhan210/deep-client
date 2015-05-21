@@ -2,57 +2,137 @@ package edu.mit.csail.deepthing;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.AsyncTask;
+import android.os.Environment;
 import android.support.v7.app.ActionBarActivity;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.SurfaceView;
+import android.view.View;
 import android.view.Window;
-import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.FrameLayout;
-import android.widget.Toast;
 import android.hardware.Camera;
-import android.hardware.Camera.PictureCallback;
-import android.hardware.Camera.ShutterCallback;
 import android.view.ViewGroup.LayoutParams;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 
 public class MainActivity extends ActionBarActivity {
 
     private static final String TAG = "MainActivity";
+    private static final String IMAGE_FOLDER = "deep-dir";
     Button buttonClick;
     Preview preview;
     Camera camera;
-    Activity act;
-    Context ctx;
+    Activity activity;
+    Context context;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        requestWindowFeature(Window.FEATURE_NO_TITLE); // must before setContentView
+        //requestWindowFeature(Window.FEATURE_NO_TITLE); // must before setContentView
         setContentView(R.layout.activity_main);
 
-        ctx = this;
-        act = this;
+        context = this;
+        activity = this;
 
         preview = new Preview(this, (SurfaceView)findViewById(R.id.surfaceView));
         preview.setLayoutParams(new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         ((FrameLayout) findViewById(R.id.layout)).addView(preview);
         preview.setKeepScreenOn(true);
 
-        /**
-        preview.setOnClickListener(new OnClickListener() {
 
+        preview.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View arg0) {
                 camera.takePicture(shutterCallback, rawCallback, jpegCallback);
             }
         });
-         **/
+
 
     }
+
+
+    /** Take pictures **/
+    Camera.ShutterCallback shutterCallback = new Camera.ShutterCallback() {
+        public void onShutter() {
+        }
+    };
+
+    Camera.PictureCallback rawCallback = new Camera.PictureCallback() {
+        public void onPictureTaken(byte[] data, Camera camera) {
+
+        }
+    };
+
+    Camera.PictureCallback jpegCallback = new Camera.PictureCallback() {
+        public void onPictureTaken(byte[] data, Camera camera) {
+            new SaveImageTask().execute(data);
+            resetCam();
+            Log.d(TAG, "onPictureTaken - jpeg");
+        }
+    };
+
+
+    private class SaveImageTask extends AsyncTask<byte[], Void, Void> {
+        @Override
+        protected Void doInBackground(byte[]... data) {
+            FileOutputStream outStream = null;
+
+            // Write to SD Card
+            try {
+                File sdCard = Environment.getExternalStorageDirectory();
+                File dir = new File (sdCard.getAbsolutePath() + "/" + IMAGE_FOLDER);
+                dir.mkdirs();
+
+                String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+                String fileName = timeStamp + ".jpg";
+                File outFile = new File(dir, fileName);
+
+                outStream = new FileOutputStream(outFile);
+                outStream.write(data[0]);
+                outStream.flush();
+                outStream.close();
+
+                Log.d(TAG, "onPictureTaken - wrote bytes: " + data.length + " to " + outFile.getAbsolutePath());
+
+                refreshGallery(outFile);
+
+                
+
+            } catch (FileNotFoundException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
+            } finally {
+            }
+            return null;
+        }
+
+    }
+
+    private void refreshGallery(File file) {
+        Intent mediaScanIntent = new Intent( Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
+        mediaScanIntent.setData(Uri.fromFile(file));
+        sendBroadcast(mediaScanIntent);
+    }
+
+
+    private void resetCam() {
+        camera.startPreview();
+        preview.setCamera(camera);
+    }
+
 
     @Override
     protected void onResume() {
@@ -79,7 +159,7 @@ public class MainActivity extends ActionBarActivity {
         }
         super.onPause();
     }
-    
+
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {

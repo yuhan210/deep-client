@@ -137,7 +137,7 @@ public class Preview extends ViewGroup implements SurfaceHolder.Callback {
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
         if(mCamera != null) {
             Camera.Parameters parameters = mCamera.getParameters();
-            //parameters.setPreviewSize(mPreviewSize.width, mPreviewSize.height);
+            parameters.setPreviewSize(mPreviewSize.width, mPreviewSize.height);
             requestLayout();
 
             mCamera.setParameters(parameters);
