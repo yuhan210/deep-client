@@ -18,6 +18,10 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.hardware.Camera;
 import android.view.ViewGroup.LayoutParams;
+import android.widget.Toast;
+
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -25,6 +29,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+
+import static android.widget.Toast.*;
 
 
 public class MainActivity extends ActionBarActivity {
@@ -37,6 +43,7 @@ public class MainActivity extends ActionBarActivity {
     Activity activity;
     Context context;
 
+    private NetworkService nwkService;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -59,7 +66,7 @@ public class MainActivity extends ActionBarActivity {
             }
         });
 
-
+        nwkService = new NetworkService();
     }
 
 
@@ -84,9 +91,9 @@ public class MainActivity extends ActionBarActivity {
     };
 
 
-    private class SaveImageTask extends AsyncTask<byte[], Void, Void> {
+    private class SaveImageTask extends AsyncTask<byte[], Void, JSONObject> {
         @Override
-        protected Void doInBackground(byte[]... data) {
+        protected JSONObject doInBackground(byte[]... data) {
             FileOutputStream outStream = null;
 
             // Write to SD Card
@@ -108,7 +115,15 @@ public class MainActivity extends ActionBarActivity {
 
                 refreshGallery(outFile);
 
-                
+                try {
+                    JSONObject jsonRequest = nwkService.CreateRequest(outFile.getAbsolutePath());
+                    JSONObject jsonResponse = nwkService.Post(jsonRequest);
+                    return jsonResponse;
+
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+
 
             } catch (FileNotFoundException e) {
                 e.printStackTrace();
@@ -119,6 +134,15 @@ public class MainActivity extends ActionBarActivity {
             return null;
         }
 
+        protected void onPostExecute(JSONObject response){
+            try {
+                Toast.makeText(activity,
+                        response.get("caption").toString(), LENGTH_LONG).show();
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+
+        }
     }
 
     private void refreshGallery(File file) {
