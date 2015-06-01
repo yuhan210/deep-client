@@ -1,5 +1,6 @@
 package edu.mit.csail.deepthing;
 
+import android.app.Activity;
 import android.content.Context;
 import android.hardware.Camera;
 import android.util.DisplayMetrics;
@@ -24,6 +25,10 @@ public class Preview extends ViewGroup implements SurfaceHolder.Callback {
     SurfaceHolder mHolder;
     Camera.Size mPreviewSize;
     List<Camera.Size> mSupportedPreviewSizes;
+
+    private int mDisplayRotation;
+    private int mDisplayOrientation;
+
     Camera mCamera;
     Context mCtx;
 
@@ -59,88 +64,94 @@ public class Preview extends ViewGroup implements SurfaceHolder.Callback {
                 // set Camera parameters
                 mCamera.setParameters(params);
             }
-            //setMyPreviewSize(params)
+
         }
     }
 
-    private Camera.Size getOptimalPreviewSize(List<Camera.Size> sizes, int w, int h) {
-        final double ASPECT_TOLERANCE = 0.1;
-        double targetRatio = (double) w / h;
-        if (sizes == null) return null;
+    private Camera.Size getBestPreviewSize(int width, int height,
+                                           Camera.Parameters parameters) {
+        Camera.Size result = null;
 
-        Camera.Size optimalSize = null;
-        double minDiff = Double.MAX_VALUE;
+        for (Camera.Size size : parameters.getSupportedPreviewSizes()) {
+            System.out.println("supported" + size.width + "," + size.height);
+            if (size.width <= width && size.height <= height) {
+                if (result == null) {
+                    result = size;
+                } else {
+                    int resultArea = result.width * result.height;
+                    int newArea = size.width * size.height;
 
-        int targetHeight = h;
-
-        // Try to find an size match aspect ratio and size
-        for (Camera.Size size : sizes) {
-            double ratio = (double) size.width / size.height;
-            if (Math.abs(ratio - targetRatio) > ASPECT_TOLERANCE) continue;
-            if (Math.abs(size.height - targetHeight) < minDiff) {
-                optimalSize = size;
-                minDiff = Math.abs(size.height - targetHeight);
-            }
-        }
-
-        // Cannot find the one match the aspect ratio, ignore the requirement
-        if (optimalSize == null) {
-            minDiff = Double.MAX_VALUE;
-            for (Camera.Size size : sizes) {
-                if (Math.abs(size.height - targetHeight) < minDiff) {
-                    optimalSize = size;
-                    minDiff = Math.abs(size.height - targetHeight);
+                    if (newArea > resultArea) {
+                        result = size;
+                    }
                 }
             }
         }
-        return optimalSize;
+
+        return(result);
     }
 
-    private void setMyPreviewSize(int width, int height) {
-        // Get the set dimensions
-        float newProportion = (float) width / (float) height;
 
-        // Get the width of the screen
-        DisplayMetrics metrics = new DisplayMetrics();
-        WindowManager windowManager = (WindowManager) mCtx.getSystemService(Context.WINDOW_SERVICE);
-        windowManager.getDefaultDisplay().getMetrics(metrics);
-        int screenWidth = windowManager.getDefaultDisplay().getWidth();
-        int screenHeight = windowManager.getDefaultDisplay().getHeight();
-        float screenProportion = (float) screenWidth / (float) screenHeight;
+    private void configureCamera(int width, int height) {
+        Camera.Parameters parameters = mCamera.getParameters();
+        // Set the PreviewSize and AutoFocus:
+        setOptimalPreviewSize(parameters, width, height);
 
-        // Get the SurfaceView layout parameters
-        android.view.ViewGroup.LayoutParams lp = mSurfaceView.getLayoutParams();
-        if (newProportion > screenProportion) {
-            lp.width = screenWidth;
-            lp.height = (int) ((float) screenWidth / newProportion );
-        } else {
-            lp.width = (int) (newProportion * (float) screenHeight);
-            lp.height = screenHeight;
-        }
-        // Commit the layout parameters
-        mSurfaceView.setLayoutParams(lp);
+        // And set the parameters:
+        mCamera.setParameters(parameters);
+    }
+
+    private void setOptimalPreviewSize(Camera.Parameters cameraParameters, int width, int height) {
+        List<Camera.Size> previewSizes = cameraParameters.getSupportedPreviewSizes();
+        float targetRatio = (float) width / height;
+        Camera.Size previewSize = Utility.getOptimalPreviewSize((Activity) mCtx, previewSizes, targetRatio);
+        cameraParameters.setPreviewSize(previewSize.width, previewSize.height);
+    }
+
+    private void setDisplayOrientation() {
+        // Now set the display orientation:
+        mDisplayRotation = Utility.getDisplayRotation((Activity) mCtx);
+        mDisplayOrientation = Utility.getDisplayOrientation(mDisplayRotation, 0);
+
+        mCamera.setDisplayOrientation(mDisplayOrientation);
     }
 
     @Override
     public void surfaceCreated(SurfaceHolder holder) {
-        // The Surface has been created, acquire the camera and tell it where to draw.
-        try {
-            if (mCamera != null) {
-                mCamera.setPreviewDisplay(holder);
-            }
-        } catch (IOException exception) {
-            Log.e(TAG, "IOException caused by setPreviewDisplay()", exception);
-        }
+        // empty. Take care of releasing the Camera preview in your activity.
     }
+
 
     @Override
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-        if(mCamera != null) {
-            Camera.Parameters parameters = mCamera.getParameters();
-            parameters.setPreviewSize(mPreviewSize.width, mPreviewSize.height);
-            requestLayout();
+        // If your preview can change or rotate, take care of those events here.
+        // Make sure to stop the preview before resizing or reformatting it.
 
-            mCamera.setParameters(parameters);
+        if (mHolder.getSurface() == null){
+            // preview surface does not exist
+            return;
+        }
+
+        // Try to stop the current preview:
+        try {
+            mCamera.stopPreview();
+        } catch (Exception e) {
+            // Ignore...
+        }
+
+
+        // start preview with new settings
+        if(mCamera != null) {
+            try {
+                mCamera.setPreviewDisplay(holder);
+
+            } catch (IOException exception) {
+                Log.e(TAG, "IOException caused by setPreviewDisplay()", exception);
+            }
+            Camera.Parameters parameters = mCamera.getParameters();
+            configureCamera(width, height);
+            setDisplayOrientation();
+
             mCamera.startPreview();
         }
     }
@@ -150,21 +161,6 @@ public class Preview extends ViewGroup implements SurfaceHolder.Callback {
         // Surface will be destroyed when we return, so stop the preview.
         if (mCamera != null) {
             mCamera.stopPreview();
-        }
-    }
-
-    @Override
-    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        // We purposely disregard child measurements because act as a
-        // wrapper to a SurfaceView that centers the camera preview instead
-        // of stretching it.
-        final int width = resolveSize(getSuggestedMinimumWidth(), widthMeasureSpec);
-        final int height = resolveSize(getSuggestedMinimumHeight(), heightMeasureSpec);
-        setMeasuredDimension(width, height);
-
-        if (mSupportedPreviewSizes != null) {
-
-            mPreviewSize = getOptimalPreviewSize(mSupportedPreviewSizes, width, height);
         }
     }
 

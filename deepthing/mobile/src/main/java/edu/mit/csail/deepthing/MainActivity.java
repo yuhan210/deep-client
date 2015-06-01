@@ -3,6 +3,8 @@ package edu.mit.csail.deepthing;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Environment;
@@ -18,11 +20,13 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.hardware.Camera;
 import android.view.ViewGroup.LayoutParams;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -44,6 +48,8 @@ public class MainActivity extends ActionBarActivity {
     Camera camera;
     Activity activity;
     Context context;
+    TextView txtView;
+    String detectionStr = "";
 
     private NetworkService nwkService;
     @Override
@@ -68,6 +74,7 @@ public class MainActivity extends ActionBarActivity {
             }
         });
 
+        txtView = (TextView) findViewById(R.id.detText);
         nwkService = new NetworkService();
     }
 
@@ -86,7 +93,15 @@ public class MainActivity extends ActionBarActivity {
 
     Camera.PictureCallback jpegCallback = new Camera.PictureCallback() {
         public void onPictureTaken(byte[] data, Camera camera) {
-            new SaveImageTask().execute(data);
+
+            Bitmap bitmap= BitmapFactory.decodeByteArray(data, 0, data.length);
+
+            Bitmap rotatedBitmap = Utility.rotateBitmap(bitmap, 180);
+
+            ByteArrayOutputStream byteArrayBitmapStream = new ByteArrayOutputStream();
+            rotatedBitmap.compress(Bitmap.CompressFormat.JPEG, 100, byteArrayBitmapStream);
+            byte[] b = byteArrayBitmapStream.toByteArray();
+            new SaveImageTask().execute(b);
             resetCam();
             Log.d(TAG, "onPictureTaken - jpeg");
         }
@@ -118,6 +133,7 @@ public class MainActivity extends ActionBarActivity {
                 refreshGallery(outFile);
 
                 try {
+                    /** upload to server **/
                     JSONObject jsonRequest = nwkService.CreateRequest(outFile.getAbsolutePath());
                     JSONObject jsonResponse = nwkService.Post(jsonRequest);
                     return jsonResponse;
@@ -138,8 +154,11 @@ public class MainActivity extends ActionBarActivity {
 
         protected void onPostExecute(JSONObject response){
             try {
+                detectionStr = response.get("caption").toString();
+
+                txtView.setText(detectionStr);
                 Toast.makeText(activity,
-                        response.get("caption").toString(), LENGTH_LONG).show();
+                        detectionStr, LENGTH_LONG).show();
             } catch (JSONException e) {
                 e.printStackTrace();
             }
@@ -167,12 +186,13 @@ public class MainActivity extends ActionBarActivity {
         if(numCams > 0){
             try{
                 camera = Camera.open(0);
-                camera.startPreview();
                 preview.setCamera(camera);
             } catch (RuntimeException ex){
                 Log.e(TAG, "Camera not found");
             }
         }
+        txtView.setText(detectionStr);
+
     }
 
     @Override

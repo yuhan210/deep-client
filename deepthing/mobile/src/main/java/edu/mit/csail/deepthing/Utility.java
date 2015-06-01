@@ -3,17 +3,23 @@ package edu.mit.csail.deepthing;
 import android.app.Activity;
 import android.graphics.Bitmap;
 import android.graphics.Matrix;
+import android.graphics.Point;
 import android.hardware.Camera;
+import android.os.Build;
 import android.util.Base64;
+import android.util.Log;
+import android.view.Display;
 import android.view.Surface;
 
 import java.io.ByteArrayOutputStream;
+import java.util.List;
 
 /**
  * Created by tiffany on 5/21/15.
  */
 public class Utility {
 
+    private static final String TAG = "Utility";
     /**
      * Gets the current display rotation in angles.
      *
@@ -47,6 +53,57 @@ public class Utility {
         return result;
     }
 
+
+
+    public static Camera.Size getOptimalPreviewSize(Activity currentActivity,
+                                             List<Camera.Size> sizes, double targetRatio) {
+        // Use a very small tolerance because we want an exact match.
+        final double ASPECT_TOLERANCE = 0.001;
+        if (sizes == null) return null;
+        Camera.Size optimalSize = null;
+        double minDiff = Double.MAX_VALUE;
+        // Because of bugs of overlay and layout, we sometimes will try to
+        // layout the viewfinder in the portrait orientation and thus get the
+        // wrong size of preview surface. When we change the preview size, the
+        // new overlay will be created before the old one closed, which causes
+        // an exception. For now, just get the screen size.
+        Point point = getDefaultDisplaySize(currentActivity, new Point());
+        int targetHeight = Math.min(point.x, point.y);
+        // Try to find an size match aspect ratio and size
+        for (Camera.Size size : sizes) {
+            double ratio = (double) size.width / size.height;
+            if (Math.abs(ratio - targetRatio) > ASPECT_TOLERANCE) continue;
+            if (Math.abs(size.height - targetHeight) < minDiff) {
+                optimalSize = size;
+                minDiff = Math.abs(size.height - targetHeight);
+            }
+        }
+        // Cannot find the one match the aspect ratio. This should not happen.
+        // Ignore the requirement.
+        if (optimalSize == null) {
+            Log.w(TAG, "No preview size match the aspect ratio");
+            minDiff = Double.MAX_VALUE;
+            for (Camera.Size size : sizes) {
+                if (Math.abs(size.height - targetHeight) < minDiff) {
+                    optimalSize = size;
+                    minDiff = Math.abs(size.height - targetHeight);
+                }
+            }
+        }
+        return optimalSize;
+    }
+
+
+    @SuppressWarnings("deprecation")
+    private static Point getDefaultDisplaySize(Activity activity, Point size) {
+        Display d = activity.getWindowManager().getDefaultDisplay();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB_MR2) {
+            d.getSize(size);
+        } else {
+            size.set(d.getWidth(), d.getHeight());
+        }
+        return size;
+    }
     /**
      * Returns the Base64 representation of a Bitmap, which is compressed with the given format
      * and quality.
